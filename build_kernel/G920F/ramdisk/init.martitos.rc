@@ -1,0 +1,14 @@
+on early-init
+    write /sys/block/sda/queue/read_ahead_kb 2048
+
+on property:sys.boot_completed=1
+
+    # Misc
+    write /sys/module/workqueue/parameters/power_efficient 1
+
+    # I/O management
+    write /sys/block/sda/queue/rotational 0
+    write /sys/block/sda/queue/add_random 0
+    write /sys/block/sda/queue/read_ahead_kb 1024
+    write /sys/block/sda/queue/rq_affinity 2
+    write /sys/block/sda/bdi/min_ratio 5
