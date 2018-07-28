@@ -14,6 +14,12 @@
 
 const char *charger_chip_name;
 
+static unsigned int STORE_MODE_CHARGING_MAX = 90;
+static unsigned int STORE_MODE_CHARGING_MIN = 20;
+module_param_named(store_mode_max, STORE_MODE_CHARGING_MAX, uint, S_IWUSR | S_IRUGO);
+module_param_named(store_mode_min, STORE_MODE_CHARGING_MIN, uint, S_IWUSR | S_IRUGO);
+const char *charger_chip_name;
+
 bool sleep_mode = false;
 #if defined(CONFIG_WIRELESS_CHARGER_HIGH_VOLTAGE)
 bool wpc_temp_mode = false;
@@ -4756,22 +4762,14 @@ ssize_t sec_bat_store_attrs(
 		break;
 	case STORE_MODE:
 		if (sscanf(buf, "%d\n", &x) == 1) {
-			if (x) {
-				battery->store_mode = true;
-#if !defined(CONFIG_SEC_FACTORY)
-				if (battery->store_mode) {
-					if (battery->capacity <= 5) {
-						battery->ignore_store_mode = true;
-					} else {
-						union power_supply_propval value;
-						value.intval = battery->store_mode;
-						psy_do_property(battery->pdata->charger_name, set,
-								POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, value);
-					}
-				}
-#endif
-			}
+			battery->store_mode = x ? true : false;
 			ret = count;
+			if (battery->store_mode) {
+				union power_supply_propval value;
+				value.intval = battery->store_mode;
+				psy_do_property(battery->pdata->charger_name, set,
+						POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, value);
+			}
 		}
 		break;
 	case UPDATE:
@@ -5734,15 +5732,7 @@ static int sec_bat_get_property(struct power_supply *psy,
 			} else
 #endif
 				val->intval = battery->status;
-#if defined(CONFIG_STORE_MODE)
-			psy_do_property("ac", get, POWER_SUPPLY_PROP_ONLINE, value_ac);
-			psy_do_property("usb", get, POWER_SUPPLY_PROP_ONLINE, value_usb);
-			if (battery->store_mode && !lpcharge &&
-				(value_ac.intval || value_usb.intval) &&
-				(battery->status == POWER_SUPPLY_STATUS_DISCHARGING)) {
-				val->intval = POWER_SUPPLY_STATUS_CHARGING;
-			}
-#endif
+
 		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
@@ -7654,8 +7644,15 @@ static int __devinit sec_battery_probe(struct platform_device *pdev)
 	battery->cable_type = POWER_SUPPLY_TYPE_BATTERY;
 	battery->test_mode = 0;
 	battery->factory_mode = false;
+#if defined(CONFIG_STORE_MODE)
 	battery->store_mode = false;
-	battery->ignore_store_mode = false;
+	value.intval = battery->store_mode;
+	psy_do_property(battery->pdata->charger_name, set,
+			POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, value);
+#else
+
+	battery->store_mode = false;
+#endif
 	battery->slate_mode = false;
 	slate_mode_state = battery->slate_mode;
 	battery->is_hc_usb = false;
@@ -7913,19 +7910,6 @@ static int __devinit sec_battery_probe(struct platform_device *pdev)
 	psy_do_property(battery->pdata->charger_name, set,
 			POWER_SUPPLY_PROP_AFC_CHARGER_MODE,
 			value);
-#endif
-#if defined(CONFIG_STORE_MODE) && !defined(CONFIG_SEC_FACTORY)
-		battery->store_mode = true;
-		value.intval = 0;
-		psy_do_property(battery->pdata->fuelgauge_name, get,
-			POWER_SUPPLY_PROP_CAPACITY, value);
-		if (value.intval <= 5) {
-			battery->ignore_store_mode = true;
-		} else {	
-			value.intval = battery->store_mode;
-			psy_do_property(battery->pdata->charger_name, set,
-					POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX, value);
-		}
 #endif
 	if (pdata->initial_check)
 		pdata->initial_check();
